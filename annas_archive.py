@@ -1,6 +1,9 @@
 from contextlib import closing
 from typing import Generator
 from urllib.parse import quote_plus
+from urllib.request import urlopen, Request
+from urllib.error import HTTPError, URLError
+from http.client import RemoteDisconnected
 
 from lxml import html
 from lxml.etree import Comment
@@ -59,7 +62,7 @@ class AnnasArchiveStore(BasicStoreConfig, StorePlugin):
 
     def open(self, parent=None, detail_item=None, external=False):
         if detail_item:
-            url = f"{self.BASE_URL}/md5/{detail_item}"
+            url = self._get_url(detail_item)
         else:
             url = self.BASE_URL
         if external or self.config.get('open_external', False):
@@ -74,3 +77,31 @@ class AnnasArchiveStore(BasicStoreConfig, StorePlugin):
     def search(cls, query, max_results=10, timeout=60) -> SearchResults:
         url = f'{cls.BASE_URL}/search?q={quote_plus(query)}'
         yield from cls._search(url, max_results, timeout)
+
+    def get_details(self, search_result: SearchResult, timeout=60):
+        if not search_result.formats:
+            return
+
+        _format = '.' + search_result.formats.lower()
+
+        br = browser()
+        with closing(br.open(self._get_url(search_result.detail_item), timeout=timeout)) as f:
+            doc = html.fromstring(f.read())
+            for link in doc.xpath('//div[@id="md5-panel-downloads"]/div/ul/li/a[contains(@class, "js-download-link")]'):
+                url = link.get('href')
+
+                # Speeds it up by checking the extension of the url.
+                # Might miss a direct url that doesn't end with the extension
+                if not url.endswith(_format):
+                    continue
+                if url[0] == '/':
+                    url = self.BASE_URL + url
+                try:
+                    with urlopen(Request(url, method='HEAD'), timeout=timeout) as resp:
+                        if resp.info().get_content_maintype() == 'application':
+                            search_result.downloads[f"{search_result.formats} - {''.join(link.itertext())}"] = url
+                except (HTTPError, URLError, TimeoutError, RemoteDisconnected):
+                    pass
+
+    def _get_url(self, md5):
+        return f"{self.BASE_URL}/md5/{md5}"
