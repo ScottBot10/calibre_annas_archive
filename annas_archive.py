@@ -49,7 +49,7 @@ class AnnasArchiveStore(BasicStoreConfig, StorePlugin):
 
                 info = ''.join(book.xpath('./a/div/div[contains(@class,"text-gray-500")]/text()'))
                 lang, format_, size, *filename = info.strip('"').split(',', 3)
-                s.formats = format_.upper()
+                s.formats = format_.strip().upper()
 
                 s.price = '$0.00'
                 s.drm = SearchResult.DRM_UNLOCKED
