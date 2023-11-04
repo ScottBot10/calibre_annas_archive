@@ -1,9 +1,10 @@
+import re
 from contextlib import closing
+from http.client import RemoteDisconnected
 from typing import Generator
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus
 from urllib.request import urlopen, Request
-from urllib.error import HTTPError, URLError
-from http.client import RemoteDisconnected
 
 from lxml import html
 from lxml.etree import Comment
@@ -11,15 +12,16 @@ from lxml.etree import Comment
 from calibre import browser
 from calibre.gui2 import open_url
 from calibre.gui2.store import StorePlugin
-from calibre.gui2.store.basic_config import BasicStoreConfig
 from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
 from qt.core import QUrl
 
 SearchResults = Generator[SearchResult, None, None]
 
+INFO_PATTERN = re.compile(r'(?:(.+) \[(.*)\], )?([a-z0-9]{3,7})(?:, ([\d.]+(?:KB|MB|GB)))?(?:, (.+))?')
 
-class AnnasArchiveStore(BasicStoreConfig, StorePlugin):
+
+class AnnasArchiveStore(StorePlugin):
     BASE_URL = 'https://annas-archive.org'
 
     @staticmethod
@@ -51,8 +53,9 @@ class AnnasArchiveStore(BasicStoreConfig, StorePlugin):
                 s.author = ''.join(book.xpath('./a/div/div[contains(@class,"italic")]/text()'))
 
                 info = ''.join(book.xpath('./a/div/div[contains(@class,"text-gray-500")]/text()'))
-                lang, format_, size, *filename = info.strip('"').split(',', 3)
-                s.formats = format_.strip().upper()
+                match = INFO_PATTERN.match(info)
+                if match is not None:
+                    s.formats = match.group(3).upper()
 
                 s.price = '$0.00'
                 s.drm = SearchResult.DRM_UNLOCKED
@@ -73,10 +76,9 @@ class AnnasArchiveStore(BasicStoreConfig, StorePlugin):
             d.set_tags(self.config.get('tags', ''))
             d.exec()
 
-    @classmethod
-    def search(cls, query, max_results=10, timeout=60) -> SearchResults:
-        url = f'{cls.BASE_URL}/search?q={quote_plus(query)}'
-        yield from cls._search(url, max_results, timeout)
+    def search(self, query, max_results=10, timeout=60) -> SearchResults:
+        url = f'{self.BASE_URL}/search?q={quote_plus(query)}&sort={self.config.get("order", "")}'
+        yield from self._search(url, max_results, timeout)
 
     def get_details(self, search_result: SearchResult, timeout=60):
         if not search_result.formats:
@@ -84,24 +86,45 @@ class AnnasArchiveStore(BasicStoreConfig, StorePlugin):
 
         _format = '.' + search_result.formats.lower()
 
+        link_opts = self.config.get('link', {})
+        url_extension = link_opts.get('url_extension', True)
+        content_type = link_opts.get('content_type', False)
+        sub_site = link_opts.get('sub_site', False)
+
         br = browser()
         with closing(br.open(self._get_url(search_result.detail_item), timeout=timeout)) as f:
             doc = html.fromstring(f.read())
-            for link in doc.xpath('//div[@id="md5-panel-downloads"]/div/ul/li/a[contains(@class, "js-download-link")]'):
-                url = link.get('href')
+        for link in doc.xpath('//div[@id="md5-panel-downloads"]/div/ul/li/a[contains(@class, "js-download-link")]'):
+            url = link.get('href')
+            if url[0] == '/':
+                url = self.BASE_URL + url
 
-                # Speeds it up by checking the extension of the url.
-                # Might miss a direct url that doesn't end with the extension
-                if not url.endswith(_format):
-                    continue
-                if url[0] == '/':
-                    url = self.BASE_URL + url
+            # Speeds it up by checking the extension of the url.
+            # Might miss a direct url that doesn't end with the extension
+            if url_extension and not url.endswith(_format):
+                continue
+            # Takes longer, but more accurate
+            if content_type:
                 try:
                     with urlopen(Request(url, method='HEAD'), timeout=timeout) as resp:
-                        if resp.info().get_content_maintype() == 'application':
-                            search_result.downloads[f"{search_result.formats} - {''.join(link.itertext())}"] = url
+                        if resp.info().get_content_maintype() != 'application':
+                            continue
                 except (HTTPError, URLError, TimeoutError, RemoteDisconnected):
                     pass
+            if sub_site:
+                pass
+
+            search_result.downloads[f"{search_result.formats} - {''.join(link.itertext())}"] = url
 
     def _get_url(self, md5):
         return f"{self.BASE_URL}/md5/{md5}"
+
+    def customization_help(self, gui=False):
+        return 'Customize the behavior of this store.'
+
+    def config_widget(self):
+        from calibre_plugins.store_annas_archive.config import ConfigWidget
+        return ConfigWidget(self)
+
+    def save_settings(self, config_widget):
+        config_widget.save_settings()
