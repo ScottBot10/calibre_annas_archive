@@ -14,6 +14,7 @@ from calibre.gui2 import open_url
 from calibre.gui2.store import StorePlugin
 from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
+from calibre_plugins.store_annas_archive.search_options import SearchOption
 from qt.core import QUrl
 
 SearchResults = Generator[SearchResult, None, None]
@@ -77,7 +78,13 @@ class AnnasArchiveStore(StorePlugin):
             d.exec()
 
     def search(self, query, max_results=10, timeout=60) -> SearchResults:
-        url = f'{self.BASE_URL}/search?q={quote_plus(query)}&sort={self.config.get("order", "")}'
+        url = f'{self.BASE_URL}/search?q={quote_plus(query)}'
+        search_opts = self.config.get('search', {})
+        if 'sort' in search_opts:
+            url += f'&sort={search_opts["order"]}'
+        for option in SearchOption.options:
+            for value in search_opts.get(option.config_option, ()):
+                url += f'&{option.url_param}={value}'
         yield from self._search(url, max_results, timeout)
 
     def get_details(self, search_result: SearchResult, timeout=60):

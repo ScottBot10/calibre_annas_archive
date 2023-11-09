@@ -15,4 +15,4 @@ calibre-customize -b <path to cloned repo>
 ## Todo:
 - [x] Scrape download links for the books
 - [ ] Implement checking of alternate urls
-- [ ] Add config options for default ordering, language, etc
+- [x] Add config options for default ordering, language, etc
