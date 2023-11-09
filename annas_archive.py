@@ -98,23 +98,54 @@ class AnnasArchiveStore(StorePlugin):
             url = link.get('href')
             if url[0] == '/':
                 url = self.BASE_URL + url
+            link_text = ''.join(link.itertext())
 
-            # Speeds it up by checking the extension of the url.
-            # Might miss a direct url that doesn't end with the extension
-            if url_extension and not url.endswith(_format):
-                continue
-            # Takes longer, but more accurate
-            if content_type:
-                try:
-                    with urlopen(Request(url, method='HEAD'), timeout=timeout) as resp:
-                        if resp.info().get_content_maintype() != 'application':
-                            continue
-                except (HTTPError, URLError, TimeoutError, RemoteDisconnected):
-                    pass
+            is_sub_site = False
             if sub_site:
-                pass
+                is_sub_site = True
+                if link_text == 'Libgen.li':
+                    url = self._get_libgen_link(url, br, True)
+                elif link_text == 'Libgen.rs Fiction' and link_text == 'Libgen.rs Non-Fiction':
+                    url = self._get_libgen_link(url, br, False)
+                elif link_text.startswith('Sci-Hub'):
+                    url = self._get_scihub_link(url, br)
+                else:
+                    is_sub_site = False
 
-            search_result.downloads[f"{search_result.formats} - {''.join(link.itertext())}"] = url
+            if not is_sub_site:
+                # Speeds it up by checking the extension of the url.
+                # Might miss a direct url that doesn't end with the extension
+                if url_extension and not url.endswith(_format):
+                    continue
+                # Takes longer, but more accurate
+                if content_type:
+                    try:
+                        with urlopen(Request(url, method='HEAD'), timeout=timeout) as resp:
+                            if resp.info().get_content_maintype() != 'application':
+                                continue
+                    except (HTTPError, URLError, TimeoutError, RemoteDisconnected):
+                        pass
+
+            search_result.downloads[f"{search_result.formats} - {link_text}"] = url
+
+    @staticmethod
+    def _get_libgen_link(url: str, br, add_prefix: bool) -> str:
+        with closing(br.open(url)) as resp:
+            doc = html.fromstring(resp.read())
+            scheme, _, host, _ = resp.geturl().split('/', 3)
+        url = ''.join(doc.xpath('//a[h2[text()="GET"]]/@href'))
+        if add_prefix:
+            return f"{scheme}//{host}/{url}"
+        else:
+            return url
+
+    @staticmethod
+    def _get_scihub_link(url, br):
+        with closing(br.open(url)) as resp:
+            doc = html.fromstring(resp.read())
+            scheme, _ = resp.geturl().split('/', 1)
+        url = ''.join(doc.xpath('//embed[@id="pdf"]/@src'))
+        return scheme + url
 
     def _get_url(self, md5):
         return f"{self.BASE_URL}/md5/{md5}"
