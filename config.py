@@ -30,12 +30,14 @@ class ConfigWidget(QWidget):
         search_grid = QGridLayout(search_options)
         search_grid.setContentsMargins(3, 3, 3, 9)
 
-        search_grid.addWidget(QLabel(_('Ordering:'), search_options), 0, 0)
+        ordering_label = QLabel(_('Ordering:'), search_options)
+        ordering_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        search_grid.addWidget(ordering_label, 0, 0)
         self.order = QComboBox(search_options)
         for txt, order in _ORDERS.items():
             self.order.addItem(txt, order)
         self.order.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        search_grid.addWidget(self.order, 0, 1, 1, 2)
+        search_grid.addWidget(self.order, 0, 1)
 
         self.search_options: Dict[str, SearchConfiguration] = {}
 
@@ -50,13 +52,16 @@ class ConfigWidget(QWidget):
         link_options = QGroupBox(_('Download link options'), self)
         link_options.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         link_layout = QGridLayout(link_options)
-        link_layout.setContentsMargins(0, 0, 0, 3)
-        link_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 0, 0)
+        link_layout.setContentsMargins(6, 0, 0, 3)
         self.url_extension = QCheckBox(_('Verify url extension'), link_options)
+        self.url_extension.setToolTip(_('Verify that the each download url ends with correct extension for the format'))
         link_layout.addWidget(self.url_extension, 0, 1)
         self.content_type = QCheckBox(_('Verify Content-Type'), link_options)
+        self.content_type.setToolTip(_(
+            'Get the header of each site and verify that it has an \'application\' content type'))
         link_layout.addWidget(self.content_type, 1, 1)
-        self.sub_site = QCheckBox(_('Get from sub site'), link_options)
+        self.sub_site = QCheckBox(_('Get from external site'), link_options)
+        self.sub_site.setToolTip(_('Get the direct link from external sites such as Libgen or SciHub'))
         link_layout.addWidget(self.sub_site, 2, 1)
         main_layout.addWidget(link_options)
 
