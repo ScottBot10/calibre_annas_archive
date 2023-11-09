@@ -126,7 +126,7 @@ class AnnasArchiveStore(StorePlugin):
                     except (HTTPError, URLError, TimeoutError, RemoteDisconnected):
                         pass
 
-            search_result.downloads[f"{search_result.formats} - {link_text}"] = url
+            search_result.downloads[f"{link_text}.{search_result.formats}"] = url
 
     @staticmethod
     def _get_libgen_link(url: str, br, add_prefix: bool) -> str:
