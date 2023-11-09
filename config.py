@@ -61,7 +61,6 @@ class ConfigWidget(QWidget):
         main_layout.addWidget(link_options)
 
         self.open_external = QCheckBox(_('Open store in external web browser'), self)
-        self.open_external.clicked.connect(lambda: print(self.geometry(), self.frameGeometry()))
         main_layout.addWidget(self.open_external)
 
         self.load_settings()
