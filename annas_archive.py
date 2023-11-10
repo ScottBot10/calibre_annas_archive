@@ -113,6 +113,8 @@ class AnnasArchiveStore(StorePlugin):
             if url[0] == '/':
                 url = self.working_mirror + url
             link_text = ''.join(link.itertext())
+            if link_text == 'Bulk torrent downloads':  # Ignore the link to datasets
+                continue
 
             is_sub_site = False
             if sub_site:
