@@ -15,7 +15,11 @@ from calibre.gui2.store import StorePlugin
 from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
 from calibre_plugins.store_annas_archive.constants import DEFAULT_MIRRORS, SearchOption
-from qt.core import QUrl
+
+try:
+    from qt.core import QUrl
+except (ImportError, ModuleNotFoundError):
+    from PyQt5.Qt import QUrl
 
 SearchResults = Generator[SearchResult, None, None]
 

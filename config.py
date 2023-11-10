@@ -3,9 +3,16 @@ from typing import Dict
 
 from calibre_plugins.store_annas_archive.constants import (DEFAULT_MIRRORS, SearchConfiguration, Content, Access,
                                                            FileType, Source, Language)
-from qt.core import (Qt, QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGroupBox, QScrollArea,
-                     QAbstractScrollArea, QComboBox, QCheckBox, QSizePolicy, QListWidget, QListWidgetItem,
-                     QAbstractItemView, QShortcut, QKeySequence)
+try:
+    from qt.core import (Qt, QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGroupBox, QScrollArea,
+                         QAbstractScrollArea, QComboBox, QCheckBox, QSizePolicy, QListWidget, QListWidgetItem,
+                         QAbstractItemView, QShortcut, QKeySequence)
+except (ImportError, ModuleNotFoundError):
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtWidgets import (QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGroupBox, QScrollArea,
+                                 QAbstractScrollArea, QComboBox, QCheckBox, QSizePolicy, QListWidget, QListWidgetItem,
+                                 QAbstractItemView, QShortcut)
+    from PyQt5.QtGui import QKeySequence
 
 load_translations()
 
@@ -47,7 +54,7 @@ class MirrorsList(QListWidget):
         item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsEnabled)
 
     def dropEvent(self, event):
-        y = event.position().y()
+        y = event.pos().y()
         if (self.count() < 5 and y <= (self.count() * 16) - 10) or (self.count() >= 5 and y <= 70):
             return super().dropEvent(event)
 
