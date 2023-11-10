@@ -166,9 +166,6 @@ class AnnasArchiveStore(StorePlugin):
     def _get_url(self, md5):
         return f"{self.working_mirror}/md5/{md5}"
 
-    def customization_help(self, gui=False):
-        return 'Customize the behavior of this store.'
-
     def config_widget(self):
         from calibre_plugins.store_annas_archive.config import ConfigWidget
         return ConfigWidget(self)
