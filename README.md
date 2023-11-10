@@ -17,6 +17,6 @@ or if you're on Linux, you can run the shell script to create the zip file and t
 ./zip_release.sh && calibre-customize -a $(ls calibre_annas_archive-v*.zip -1rt | tail -n1)
 ```
 
-You can change configuration such as search parameters and download url behaviour by going to 
+You can change configuration such as search parameters, download url behaviour and mirrors by going to 
 **Preferences > Plugins > Store** and scrolling down to and double-clicking **Anna's Archive (x.x.x) by ScottBot10**
 to open the settings menu.

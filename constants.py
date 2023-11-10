@@ -4,7 +4,10 @@ from typing import Iterable, Dict, List, Type, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from qt.core import QCheckBox
 
-__all__ = ('SearchOption', 'SearchConfiguration', 'Content', 'Access', 'FileType', 'Source', 'Language')
+__all__ = (
+    'DEFAULT_MIRRORS', 'SearchOption', 'SearchConfiguration', 'Content', 'Access', 'FileType', 'Source', 'Language')
+
+DEFAULT_MIRRORS = ['https://annas-archive.org', 'https://annas-archive.gs', 'https://annas-archive.se']
 
 
 class SearchOption(type):
@@ -28,7 +31,7 @@ class SearchConfiguration:
     options: Iterable[Tuple[str, str]]
 
     def __init__(self):
-        self.checkboxes: Dict[str, QCheckBox] = {}
+        self.checkboxes: Dict[str, 'QCheckBox'] = {}
 
 
 Content = SearchOption('Content', 'content', 'content', (

@@ -14,7 +14,7 @@ from calibre.gui2 import open_url
 from calibre.gui2.store import StorePlugin
 from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
-from calibre_plugins.store_annas_archive.search_options import SearchOption
+from calibre_plugins.store_annas_archive.constants import DEFAULT_MIRRORS, SearchOption
 from qt.core import QUrl
 
 SearchResults = Generator[SearchResult, None, None]
@@ -23,62 +23,56 @@ INFO_PATTERN = re.compile(r'(?:(.+) \[(.*)\], )?([a-z0-9]{3,7})(?:, ([\d.]+(?:KB
 
 
 class AnnasArchiveStore(StorePlugin):
-    BASE_URL = 'https://annas-archive.org'
+    def genesis(self):
+        self.working_mirror = None
 
-    @staticmethod
-    def _search(url: str, max_results: int, timeout: int) -> SearchResults:
+    def _search(self, url: str, max_results: int, timeout: int) -> SearchResults:
         br = browser()
-        with closing(br.open(url, timeout=timeout)) as f:
-            doc = html.fromstring(f.read())
-            counter = max_results
-            for data in doc.xpath('//div[@class="mb-4"]/div[contains(@class,"h-[125]")]'):
-                if counter <= 0:
+        doc = None
+        for self.working_mirror in self.config.get('mirrors', DEFAULT_MIRRORS):
+            with closing(br.open(url.format(base=self.working_mirror), timeout=timeout)) as resp:
+                if resp.code < 500 or resp.code > 599:
+                    doc = html.fromstring(resp.read())
                     break
+        if doc is None:
+            self.working_mirror = None
+            raise Exception('No working mirrors of Anna\'s Archive found.')
+        counter = max_results
+        for data in doc.xpath('//div[@class="mb-4"]/div[contains(@class,"h-[125]")]'):
+            if counter <= 0:
+                break
 
-                book = data
-                if not book.xpath('./*'):
-                    comments = tuple(book.iterchildren(Comment))
-                    if comments:
-                        book = html.fromstring(html.tostring(comments[0]).strip(b'<!--').strip(b'-->'))
-                    else:
-                        continue
-
-                hash_id = ''.join(url.split('/')[-1] for url in book.xpath('./a/@href'))
-                if not hash_id:
+            book = data
+            if not book.xpath('./*'):
+                comments = tuple(book.iterchildren(Comment))
+                if comments:
+                    book = html.fromstring(html.tostring(comments[0]).strip(b'<!--').strip(b'-->'))
+                else:
                     continue
 
-                s = SearchResult()
-                s.detail_item = hash_id
-                s.cover_url = ''.join(book.xpath('./a/div[contains(@class,"flex-none")]/div/img/@src'))
-                s.title = ''.join(book.xpath('./a/div/h3/text()'))
-                s.author = ''.join(book.xpath('./a/div/div[contains(@class,"italic")]/text()'))
+            hash_id = ''.join(url.split('/')[-1] for url in book.xpath('./a/@href'))
+            if not hash_id:
+                continue
 
-                info = ''.join(book.xpath('./a/div/div[contains(@class,"text-gray-500")]/text()'))
-                match = INFO_PATTERN.match(info)
-                if match is not None:
-                    s.formats = match.group(3).upper()
+            s = SearchResult()
+            s.detail_item = hash_id
+            s.cover_url = ''.join(book.xpath('./a/div[contains(@class,"flex-none")]/div/img/@src'))
+            s.title = ''.join(book.xpath('./a/div/h3/text()'))
+            s.author = ''.join(book.xpath('./a/div/div[contains(@class,"italic")]/text()'))
 
-                s.price = '$0.00'
-                s.drm = SearchResult.DRM_UNLOCKED
+            info = ''.join(book.xpath('./a/div/div[contains(@class,"text-gray-500")]/text()'))
+            match = INFO_PATTERN.match(info)
+            if match is not None:
+                s.formats = match.group(3).upper()
 
-                counter -= 1
-                yield s
+            s.price = '$0.00'
+            s.drm = SearchResult.DRM_UNLOCKED
 
-    def open(self, parent=None, detail_item=None, external=False):
-        if detail_item:
-            url = self._get_url(detail_item)
-        else:
-            url = self.BASE_URL
-        if external or self.config.get('open_external', False):
-            open_url(QUrl(url))
-        else:
-            d = WebStoreDialog(self.gui, self.BASE_URL, parent, url)
-            d.setWindowTitle(self.name)
-            d.set_tags(self.config.get('tags', ''))
-            d.exec()
+            counter -= 1
+            yield s
 
     def search(self, query, max_results=10, timeout=60) -> SearchResults:
-        url = f'{self.BASE_URL}/search?q={quote_plus(query)}'
+        url = f'{{base}}/search?q={quote_plus(query)}'
         search_opts = self.config.get('search', {})
         if 'sort' in search_opts:
             url += f'&sort={search_opts["order"]}'
@@ -86,6 +80,19 @@ class AnnasArchiveStore(StorePlugin):
             for value in search_opts.get(option.config_option, ()):
                 url += f'&{option.url_param}={value}'
         yield from self._search(url, max_results, timeout)
+
+    def open(self, parent=None, detail_item=None, external=False):
+        if detail_item:
+            url = self._get_url(detail_item)
+        else:
+            url = self.working_mirror
+        if external or self.config.get('open_external', False):
+            open_url(QUrl(url))
+        else:
+            d = WebStoreDialog(self.gui, self.working_mirror, parent, url)
+            d.setWindowTitle(self.name)
+            d.set_tags(self.config.get('tags', ''))
+            d.exec()
 
     def get_details(self, search_result: SearchResult, timeout=60):
         if not search_result.formats:
@@ -104,7 +111,7 @@ class AnnasArchiveStore(StorePlugin):
         for link in doc.xpath('//div[@id="md5-panel-downloads"]/div/ul/li/a[contains(@class, "js-download-link")]'):
             url = link.get('href')
             if url[0] == '/':
-                url = self.BASE_URL + url
+                url = self.working_mirror + url
             link_text = ''.join(link.itertext())
 
             is_sub_site = False
@@ -155,7 +162,7 @@ class AnnasArchiveStore(StorePlugin):
         return scheme + url
 
     def _get_url(self, md5):
-        return f"{self.BASE_URL}/md5/{md5}"
+        return f"{self.working_mirror}/md5/{md5}"
 
     def customization_help(self, gui=False):
         return 'Customize the behavior of this store.'
