@@ -1,8 +1,8 @@
-from collections import OrderedDict
 from typing import Dict
 
-from calibre_plugins.store_annas_archive.constants import (DEFAULT_MIRRORS, SearchConfiguration, Content, Access,
+from calibre_plugins.store_annas_archive.constants import (DEFAULT_MIRRORS, SearchConfiguration, Order, Content, Access,
                                                            FileType, Source, Language)
+
 try:
     from qt.core import (Qt, QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGroupBox, QScrollArea,
                          QAbstractScrollArea, QComboBox, QCheckBox, QSizePolicy, QListWidget, QListWidgetItem,
@@ -15,14 +15,6 @@ except (ImportError, ModuleNotFoundError):
     from PyQt5.QtGui import QKeySequence
 
 load_translations()
-
-_ORDERS = OrderedDict({
-    _('Most relevant'): '',
-    _('Newest'): 'newest',
-    _('Oldest'): 'oldest',
-    _('Largest'): 'largest',
-    _('Smallest'): 'smallest'
-})
 
 
 class MirrorsList(QListWidget):
@@ -89,13 +81,14 @@ class ConfigWidget(QWidget):
         ordering_label = QLabel(_('Ordering:'), search_options)
         ordering_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         search_grid.addWidget(ordering_label, 0, 0)
-        self.order = QComboBox(search_options)
-        for txt, order in _ORDERS.items():
-            self.order.addItem(txt, order)
-        self.order.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        search_grid.addWidget(self.order, 0, 1)
+        order = QComboBox(search_options)
+        for txt, value in Order.options:
+            order.addItem(txt, value)
+        order.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        search_grid.addWidget(order, 0, 1)
+        self.order = Order(order)
 
-        self.search_options: Dict[str, SearchConfiguration] = {}
+        self.search_options: Dict[str, SearchConfiguration] = {self.order.config_option: self.order}
 
         search_grid.addWidget(self._make_cbx_group(search_options, Content()), 1, 0)
         search_grid.addWidget(self._make_cbx_group(search_options, Access()), 2, 0)
@@ -179,11 +172,8 @@ class ConfigWidget(QWidget):
         self.mirrors.load_mirrors(config.get('mirrors', DEFAULT_MIRRORS))
 
         search_opts = config.get('search', {})
-        self.order.setCurrentIndex(list(_ORDERS.values()).index(search_opts.get('order', '')))
         for configuration in self.search_options.values():
-            for type_ in search_opts.get(configuration.config_option, []):
-                if type_ in configuration.checkboxes:
-                    configuration.checkboxes[type_].setChecked(True)
+            configuration.load(search_opts.get(configuration.config_option, configuration.default))
 
         link_opts = config.get('link', {})
         self.url_extension.setChecked(link_opts.get('url_extension', True))
@@ -194,14 +184,10 @@ class ConfigWidget(QWidget):
         self.store.config['open_external'] = self.open_external.isChecked()
         self.store.config['mirrors'] = self.mirrors.get_mirrors()
 
-        self.store.config['search'] = dict(
-            order=self.order.currentData(),
-            **{
-                configuration.config_option: [type_
-                                              for type_, cbx in configuration.checkboxes.items() if cbx.isChecked()]
-                for configuration in self.search_options.values()
-            }
-        )
+        self.store.config['search'] = {
+            configuration.config_option: configuration.to_save()
+            for configuration in self.search_options.values()
+        }
         self.store.config['link'] = {
             'url_extension': self.url_extension.isChecked(),
             'content_type': self.content_type.isChecked(),

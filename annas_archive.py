@@ -78,11 +78,12 @@ class AnnasArchiveStore(StorePlugin):
     def search(self, query, max_results=10, timeout=60) -> SearchResults:
         url = f'{{base}}/search?q={quote_plus(query)}'
         search_opts = self.config.get('search', {})
-        if 'sort' in search_opts:
-            url += f'&sort={search_opts["order"]}'
         for option in SearchOption.options:
-            for value in search_opts.get(option.config_option, ()):
-                url += f'&{option.url_param}={value}'
+            value = search_opts.get(option.config_option, ())
+            if isinstance(value, str):
+                value = (value,)
+            for item in value:
+                url += f'&{option.url_param}={item}'
         yield from self._search(url, max_results, timeout)
 
     def open(self, parent=None, detail_item=None, external=False):
