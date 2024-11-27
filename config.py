@@ -69,7 +69,7 @@ class ConfigWidget(QWidget):
     def __init__(self, store):
         super().__init__()
         self.store = store
-        self.resize(575, 640)
+        self.resize(635, 780)
 
         main_layout = QVBoxLayout(self)
 
@@ -90,9 +90,10 @@ class ConfigWidget(QWidget):
 
         self.search_options: Dict[str, SearchConfiguration] = {self.order.config_option: self.order}
 
+        # TODO: lay the options out better
         search_grid.addWidget(self._make_cbx_group(search_options, Content()), 1, 0)
-        search_grid.addWidget(self._make_cbx_group(search_options, Access()), 2, 0)
-        search_grid.addWidget(self._make_cbx_group(search_options, FileType()), 1, 1)
+        search_grid.addWidget(self._make_cbx_group(search_options, FileType()), 2, 0)
+        search_grid.addWidget(self._make_cbx_group(search_options, Access()), 1, 1)
         search_grid.addWidget(self._make_cbx_group(search_options, Source()), 2, 1)
         search_grid.addWidget(self._make_cbx_group(search_options, Language(), scrollbar=True), 1, 2, 2, 1)
 
@@ -111,9 +112,6 @@ class ConfigWidget(QWidget):
         self.content_type.setToolTip(_(
             'Get the header of each site and verify that it has an \'application\' content type'))
         link_layout.addWidget(self.content_type)
-        self.sub_site = QCheckBox(_('Get from external site'), link_options)
-        self.sub_site.setToolTip(_('Get the direct link from external sites such as Libgen or SciHub'))
-        link_layout.addWidget(self.sub_site)
         horizontal_layout.addWidget(link_options)
 
         mirrors = QGroupBox(_('Mirrors'), self)
@@ -178,7 +176,6 @@ class ConfigWidget(QWidget):
         link_opts = config.get('link', {})
         self.url_extension.setChecked(link_opts.get('url_extension', True))
         self.content_type.setChecked(link_opts.get('content_type', False))
-        self.sub_site.setChecked(link_opts.get('sub_site', False))
 
     def save_settings(self):
         self.store.config['open_external'] = self.open_external.isChecked()
@@ -190,6 +187,5 @@ class ConfigWidget(QWidget):
         }
         self.store.config['link'] = {
             'url_extension': self.url_extension.isChecked(),
-            'content_type': self.content_type.isChecked(),
-            'sub_site': self.sub_site.isChecked()
+            'content_type': self.content_type.isChecked()
         }

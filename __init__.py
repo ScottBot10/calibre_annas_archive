@@ -6,7 +6,7 @@ class AnnasArchiveStore(StoreBase):
     description         = 'The world\'s largest open-source open-data library.'
     supported_platforms = ['windows', 'osx', 'linux']
     author              = 'ScottBot10'
-    version             = (0, 2, 3)
+    version             = (0, 2, 4)
     minimum_calibre_version = (5, 0, 0)
     formats             = ['EPUB', 'MOBI', 'PDF', 'AZW3', 'CBR', 'CBZ', 'FB2']
     drm_free_only       = True

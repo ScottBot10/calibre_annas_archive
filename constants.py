@@ -9,10 +9,15 @@ __all__ = (
     'FileType', 'Source', 'Language'
 )
 
-DEFAULT_MIRRORS = ['https://annas-archive.org', 'https://annas-archive.gs', 'https://annas-archive.se']
+DEFAULT_MIRRORS = ['https://annas-archive.org', 'https://annas-archive.li', 'https://annas-archive.se']
+RESULTS_PER_PAGE = 100
 
 
 class SearchOption(type):
+    """
+    Factory class for SearchConfigurations
+    """
+
     options: List[Type['SearchConfiguration']] = []
 
     def __new__(mcs, name: str, config_option: str, url_param: str, base: 'SearchConfiguration',
@@ -63,28 +68,33 @@ class CheckboxConfiguration(SearchConfiguration):
 
 Order = SearchOption('Order', 'order', 'sort', SearchConfiguration, (
     ('Most relevant', ''),
-    ('Newest', 'newest'),
-    ('Oldest', 'oldest'),
+    ('Newest (publication year)', 'newest'),
+    ('Oldest (publication year)', 'oldest'),
     ('Largest', 'largest'),
     ('Smallest', 'smallest'),
+    ('Newest (open sourced)', 'newest_added'),
+    ('Oldest (open sourced)', 'oldest_added')
 ))
 Content = SearchOption('Content', 'content', 'content', CheckboxConfiguration, (
     ('Book (non-fiction)', 'book_nonfiction'),
     ('Book (fiction)', 'book_fiction'),
     ('Book (unknown)', 'book_unknown'),
-    ('Journal article', 'journal_article'),
-    ('Comic book', 'book_comic'),
     ('Magazine', 'magazine'),
+    ('Comic book', 'book_comic'),
     ('Standards Document', 'standards_document'),
+    ('Other', 'other'),
+    ('Musical score', 'musical_score'),
+    ('Audiobook', 'audiobook'),
 ))
 Access = SearchOption('Access', 'access', 'acc', CheckboxConfiguration, (
     ('Partner Server download', 'aa_download'),
     ('External download', 'external_download'),
     ('External borrow', 'external_borrow'),
-    ('External borrow (print disabled)', 'external_borrow_printdisabled')
+    ('External borrow (print disabled)', 'external_borrow_printdisabled'),
+    ('Contained in torrents', 'torrents_available')
 ))
 FileType = SearchOption('Filetype', 'filetype', 'ext', CheckboxConfiguration, tuple(zip(
-    *((('epub', 'mobi', 'pdf', 'azw3', 'cbr', 'cbz', 'fb2', 'djvu', 'fb2.zip'),) * 2)
+    *((('epub', 'mobi', 'pdf', 'azw3', 'cbr', 'cbz', 'fb2', 'djvu', 'txt'),) * 2)
 )))
 Source = SearchOption('Source', 'source', 'src', CheckboxConfiguration, (
     ('Libgen.li', 'lgli'),
@@ -92,6 +102,11 @@ Source = SearchOption('Source', 'source', 'src', CheckboxConfiguration, (
     ('Sci-Hub', 'scihub'),
     ('Z-Library', 'zlib'),
     ('Internet Archive', 'ia'),
+    ('Uploads to AA', 'upload'),
+    ('Nexus/STC', 'nexusstc'),
+    ('DuXiu', 'duxiu'),
+    ('Z-Library Chinese', 'zlibzh'),
+    ('MagzDB', 'magzdb'),
 ))
 
 _languages = OrderedDict({

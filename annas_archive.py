@@ -1,20 +1,18 @@
-import re
 from contextlib import closing
 from http.client import RemoteDisconnected
+from math import ceil
 from typing import Generator
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus
 from urllib.request import urlopen, Request
-
-from lxml import html
-from lxml.etree import Comment
 
 from calibre import browser
 from calibre.gui2 import open_url
 from calibre.gui2.store import StorePlugin
 from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
-from calibre_plugins.store_annas_archive.constants import DEFAULT_MIRRORS, SearchOption
+from calibre_plugins.store_annas_archive.constants import DEFAULT_MIRRORS, RESULTS_PER_PAGE, SearchOption
+from lxml import html
 
 try:
     from qt.core import QUrl
@@ -23,60 +21,63 @@ except (ImportError, ModuleNotFoundError):
 
 SearchResults = Generator[SearchResult, None, None]
 
-INFO_PATTERN = re.compile(r'(?:(.+) \[(.*)\], )?([a-z0-9]{3,7})(?:, ([\d.]+(?:KB|MB|GB)))?(?:, (.+))?')
-
 
 class AnnasArchiveStore(StorePlugin):
-    def genesis(self):
+
+    def __init__(self, gui, name, config=None, base_plugin=None):
+        super().__init__(gui, name, config, base_plugin)
         self.working_mirror = None
 
     def _search(self, url: str, max_results: int, timeout: int) -> SearchResults:
         br = browser()
         doc = None
-        for self.working_mirror in self.config.get('mirrors', DEFAULT_MIRRORS):
-            with closing(br.open(url.format(base=self.working_mirror), timeout=timeout)) as resp:
-                if resp.code < 500 or resp.code > 599:
-                    doc = html.fromstring(resp.read())
-                    break
-        if doc is None:
-            self.working_mirror = None
-            raise Exception('No working mirrors of Anna\'s Archive found.')
         counter = max_results
-        for data in doc.xpath('//div[@class="mb-4"]/div[contains(@class,"h-[125]")]'):
-            if counter <= 0:
-                break
 
-            book = data
-            if not book.xpath('./*'):
-                comments = tuple(book.iterchildren(Comment))
-                if comments:
-                    book = html.fromstring(html.tostring(comments[0]).strip(b'<!--').strip(b'-->'))
+        for page in range(1, ceil(max_results / RESULTS_PER_PAGE) + 1):
+            mirrors = self.config.get('mirrors', DEFAULT_MIRRORS)
+            if self.working_mirror is not None:
+                mirrors.remove(self.working_mirror)
+                mirrors.insert(0, self.working_mirror)
+            for mirror in mirrors:
+                with closing(br.open(url.format(base=mirror, page=page), timeout=timeout)) as resp:
+                    if resp.code < 500 or resp.code > 599:
+                        self.working_mirror = mirror
+                        doc = html.fromstring(resp.read())
+                        break
+            if doc is None:
+                self.working_mirror = None
+                raise Exception('No working mirrors of Anna\'s Archive found.')
+
+            books = doc.xpath('//table/tr')
+            for book in books:
+                if counter <= 0:
+                    break
+
+                columns = book.findall("td")
+                s = SearchResult()
+
+                cover = columns[0].xpath('./a[@tabindex="-1"]')
+                if cover:
+                    cover = cover[0]
                 else:
                     continue
+                s.detail_item = cover.get('href', '').split('/')[-1]
+                if not s.detail_item:
+                    continue
 
-            hash_id = ''.join(url.split('/')[-1] for url in book.xpath('./a/@href'))
-            if not hash_id:
-                continue
+                s.cover_url = ''.join(cover.xpath('(./span/img/@src)[1]'))
+                s.title = ''.join(columns[1].xpath('./a/span/text()'))
+                s.author = ''.join(columns[2].xpath('./a/span/text()'))
+                s.formats = ''.join(columns[9].xpath('./a/span/text()')).upper()
 
-            s = SearchResult()
-            s.detail_item = hash_id
-            s.cover_url = ''.join(book.xpath('./a/div[contains(@class,"flex-none")]/div/img/@src'))
-            s.title = ''.join(book.xpath('./a/div/h3/text()'))
-            s.author = ''.join(book.xpath('./a/div/div[contains(@class,"italic")]/text()'))
+                s.price = '$0.00'
+                s.drm = SearchResult.DRM_UNLOCKED
 
-            info = ''.join(book.xpath('./a/div/div[contains(@class,"text-gray-500")]/text()'))
-            match = INFO_PATTERN.match(info)
-            if match is not None:
-                s.formats = match.group(3).upper()
-
-            s.price = '$0.00'
-            s.drm = SearchResult.DRM_UNLOCKED
-
-            counter -= 1
-            yield s
+                counter -= 1
+                yield s
 
     def search(self, query, max_results=10, timeout=60) -> SearchResults:
-        url = f'{{base}}/search?q={quote_plus(query)}'
+        url = f'{{base}}/search?page={{page}}&q={quote_plus(query)}&display=table'
         search_opts = self.config.get('search', {})
         for option in SearchOption.options:
             value = search_opts.get(option.config_option, ())
@@ -90,7 +91,10 @@ class AnnasArchiveStore(StorePlugin):
         if detail_item:
             url = self._get_url(detail_item)
         else:
-            url = self.working_mirror
+            if self.working_mirror is not None:
+                url = self.working_mirror
+            else:
+                url = self.config.get('mirrors', DEFAULT_MIRRORS)[0]
         if external or self.config.get('open_external', False):
             open_url(QUrl(url))
         else:
@@ -108,57 +112,61 @@ class AnnasArchiveStore(StorePlugin):
         link_opts = self.config.get('link', {})
         url_extension = link_opts.get('url_extension', True)
         content_type = link_opts.get('content_type', False)
-        sub_site = link_opts.get('sub_site', False)
 
         br = browser()
         with closing(br.open(self._get_url(search_result.detail_item), timeout=timeout)) as f:
             doc = html.fromstring(f.read())
-        for link in doc.xpath('//div[@id="md5-panel-downloads"]/div/ul/li/a[contains(@class, "js-download-link")]'):
+
+        for link in doc.xpath('//div[@id="md5-panel-downloads"]/ul[contains(@class, "list-inside")]/li/a[contains(@class, "js-download-link")]'):
             url = link.get('href')
-            if url[0] == '/':
-                url = self.working_mirror + url
             link_text = ''.join(link.itertext())
-            if link_text == 'Bulk torrent downloads':  # Ignore the link to datasets
+
+            if link_text == 'Libgen.li':
+                url = self._get_libgen_link(url, br)
+            elif link_text == 'Libgen.rs Fiction' or link_text == 'Libgen.rs Non-Fiction':
+                url = self._get_libgen_nonfiction_link(url, br)
+            elif link_text.startswith('Sci-Hub'):
+                url = self._get_scihub_link(url, br)
+            elif link_text == 'Z-Library':
+                url = self._get_zlib_link(url, br)
+            else:
                 continue
 
-            is_sub_site = False
-            if sub_site:
-                is_sub_site = True
-                if link_text == 'Libgen.li':
-                    url = self._get_libgen_link(url, br, True)
-                elif link_text == 'Libgen.rs Fiction' and link_text == 'Libgen.rs Non-Fiction':
-                    url = self._get_libgen_link(url, br, False)
-                elif link_text.startswith('Sci-Hub'):
-                    url = self._get_scihub_link(url, br)
-                else:
-                    is_sub_site = False
+            if not url:
+                continue
 
-            if not is_sub_site:
+            # Takes longer, but more accurate
+            if content_type:
+                try:
+                    with urlopen(Request(url, method='HEAD'), timeout=timeout) as resp:
+                        if resp.info().get_content_maintype() != 'application':
+                            continue
+                except (HTTPError, URLError, TimeoutError, RemoteDisconnected):
+                    pass
+            elif url_extension:
                 # Speeds it up by checking the extension of the url.
                 # Might miss a direct url that doesn't end with the extension
-                if url_extension and not url.endswith(_format):
+                params = url.find("?")
+                if params < 0:
+                    params = None
+                if url.endswith(_format, 0, params):
                     continue
-                # Takes longer, but more accurate
-                if content_type:
-                    try:
-                        with urlopen(Request(url, method='HEAD'), timeout=timeout) as resp:
-                            if resp.info().get_content_maintype() != 'application':
-                                continue
-                    except (HTTPError, URLError, TimeoutError, RemoteDisconnected):
-                        pass
-
             search_result.downloads[f"{link_text}.{search_result.formats}"] = url
 
     @staticmethod
-    def _get_libgen_link(url: str, br, add_prefix: bool) -> str:
+    def _get_libgen_link(url: str, br) -> str:
         with closing(br.open(url)) as resp:
             doc = html.fromstring(resp.read())
             scheme, _, host, _ = resp.geturl().split('/', 3)
         url = ''.join(doc.xpath('//a[h2[text()="GET"]]/@href'))
-        if add_prefix:
-            return f"{scheme}//{host}/{url}"
-        else:
-            return url
+        return f"{scheme}//{host}/{url}"
+
+    @staticmethod
+    def _get_libgen_nonfiction_link(url: str, br) -> str:
+        with closing(br.open(url)) as resp:
+            doc = html.fromstring(resp.read())
+        url = ''.join(doc.xpath('//h2/a[text()="GET"]/@href'))
+        return url
 
     @staticmethod
     def _get_scihub_link(url, br):
@@ -166,7 +174,17 @@ class AnnasArchiveStore(StorePlugin):
             doc = html.fromstring(resp.read())
             scheme, _ = resp.geturl().split('/', 1)
         url = ''.join(doc.xpath('//embed[@id="pdf"]/@src'))
-        return scheme + url
+        if url:
+            return scheme + url
+
+    @staticmethod
+    def _get_zlib_link(url, br):
+        with closing(br.open(url)) as resp:
+            doc = html.fromstring(resp.read())
+            scheme, _, host, _ = resp.geturl().split('/', 3)
+        url = ''.join(doc.xpath('//a[contains(@class, "addDownloadedBook")]/@href'))
+        if url:
+            return f"{scheme}//{host}/{url}"
 
     def _get_url(self, md5):
         return f"{self.working_mirror}/md5/{md5}"
